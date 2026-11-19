@@ -107,3 +107,112 @@ WHERE programming_score < 50
 -- 17. Validation test: score outside range
 -- Uncomment to test CHECK validation (will produce an error on supported MySQL versions)
 -- INSERT INTO students VALUES (106, 'Test', 'test@example.com', 'CSIT', 110, 50);
+package com.example.studentapi;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+
+import java.util.*;
+
+@SpringBootApplication
+@RestController
+@RequestMapping("/students")
+public class StudentapiApplication {
+
+	@Autowired
+	private JdbcTemplate jdbc;
+
+	public static void main(String[] args) {
+		SpringApplication.run(StudentapiApplication.class, args);
+	}
+
+	// 1. Add a student
+	@PostMapping
+	public String addStudent(@RequestBody Student student) {
+		jdbc.update(
+			"INSERT INTO students (student_id, student_name, email, course_name, programming_score, mathematics_score) VALUES (?, ?, ?, ?, ?, ?)",
+			student.student_id, student.student_name, student.email,
+			student.course_name, student.programming_score, student.mathematics_score
+		);
+
+		if (student.skills != null) {
+			for (String skill : student.skills) {
+				jdbc.update(
+					"INSERT INTO technical_skills (student_id, skill) VALUES (?, ?)",
+					student.student_id, skill
+				);
+			}
+		}
+
+		return "Student added successfully";
+	}
+
+	// 2. Retrieve all students
+	@GetMapping
+	public List<Map<String, Object>> getAllStudents() {
+		return jdbc.queryForList("SELECT * FROM students");
+	}
+
+	// 3. Search student by ID
+	@GetMapping("/{id}")
+	public List<Map<String, Object>> getStudentById(@PathVariable int id) {
+		return jdbc.queryForList("SELECT * FROM students WHERE student_id = ?", id);
+	}
+
+	// 4. Update scores and skills
+	@PutMapping("/{id}")
+	public String updateStudent(@PathVariable int id, @RequestBody Student student) {
+		jdbc.update(
+			"UPDATE students SET programming_score = ?, mathematics_score = ? WHERE student_id = ?",
+			student.programming_score, student.mathematics_score, id
+		);
+
+		jdbc.update("DELETE FROM technical_skills WHERE student_id = ?", id);
+
+		if (student.skills != null) {
+			for (String skill : student.skills) {
+				jdbc.update(
+					"INSERT INTO technical_skills (student_id, skill) VALUES (?, ?)",
+					id, skill
+				);
+			}
+		}
+
+		return "Student updated successfully";
+	}
+
+	// 5. Delete student
+	@DeleteMapping("/{id}")
+	public String deleteStudent(@PathVariable int id) {
+		jdbc.update("DELETE FROM technical_skills WHERE student_id = ?", id);
+		jdbc.update("DELETE FROM students WHERE student_id = ?", id);
+
+		return "Student deleted successfully";
+	}
+
+	// 6. Display merit list
+	@GetMapping("/merit")
+	public List<Map<String, Object>> meritList() {
+		return jdbc.queryForList(
+			"SELECT student_id, student_name, programming_score, mathematics_score, " +
+			"(programming_score + mathematics_score) / 2 AS average_score " +
+			"FROM students ORDER BY average_score DESC"
+		);
+	}
+
+	// Student data class
+	static class Student {
+		public int student_id;
+		public String student_name;
+		public String email;
+		public String course_name;
+		public int programming_score;
+		public int mathematics_score;
+		public List<String> skills;
+	}
+}
